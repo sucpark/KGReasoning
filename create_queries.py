@@ -10,6 +10,7 @@ import pdb
 import logging
 import os
 
+
 def set_logger(save_path, query_name, print_on_screen=False):
     '''
     Write logs to checkpoint and console
@@ -31,9 +32,11 @@ def set_logger(save_path, query_name, print_on_screen=False):
         console.setFormatter(formatter)
         logging.getLogger('').addHandler(console)
 
+
 def set_global_seed(seed):
     np.random.seed(seed)
     random.seed(seed)
+
 
 def index_dataset(dataset_name, force=False):
     print('Indexing dataset {0}'.format(dataset_name))
@@ -115,6 +118,7 @@ def index_dataset(dataset_name, force=False):
     print ('num entity: %d, num relation: %d'%(len(ent2id), len(rel2id)))
     print ("indexing finished!!")
 
+
 def construct_graph(base_path, indexified_files):
     #knowledge graph
     #kb[e][rel] = set([e, e, e])
@@ -133,24 +137,27 @@ def construct_graph(base_path, indexified_files):
 
     return ent_in, ent_out
 
+
 def list2tuple(l):
     return tuple(list2tuple(x) if type(x)==list else x for x in l)
 
+
 def tuple2list(t):
     return list(tuple2list(x) if type(x)==tuple else x for x in t)
+
 
 def write_links(dataset, ent_out, small_ent_out, max_ans_num, name):
     queries = defaultdict(set)
     tp_answers = defaultdict(set)
     fn_answers = defaultdict(set)
-    fp_answers = defaultdict(set)
+    # fp_answers = defaultdict(set)
     num_more_answer = 0
     for ent in ent_out:
         for rel in ent_out[ent]:
             if len(ent_out[ent][rel]) <= max_ans_num:
                 queries[('e', ('r',))].add((ent, (rel,)))
-                tp_answers[(ent, (rel,))] = small_ent_out[ent][rel]
-                fn_answers[(ent, (rel,))] = ent_out[ent][rel]
+                tp_answers[(ent, (rel,))] = small_ent_out[ent][rel]  # true_positive: train_ent_out 에서 answer
+                fn_answers[(ent, (rel,))] = ent_out[ent][rel]   # false_positive: valid_only_ent_out 에서 answer
             else:
                 num_more_answer += 1
 
@@ -160,9 +167,10 @@ def write_links(dataset, ent_out, small_ent_out, max_ans_num, name):
         pickle.dump(tp_answers, f)
     with open('./data/%s/%s-fn-answers.pkl'%(dataset, name), 'wb') as f:
         pickle.dump(fn_answers, f)
-    with open('./data/%s/%s-fp-answers.pkl'%(dataset, name), 'wb') as f:
-        pickle.dump(fp_answers, f)
-    print (num_more_answer)
+    # with open('./data/%s/%s-fp-answers.pkl'%(dataset, name), 'wb') as f:
+    #     pickle.dump(fp_answers, f)
+    print(num_more_answer)
+
 
 def ground_queries(dataset, query_structure, ent_in, ent_out, small_ent_in, small_ent_out, gen_num, max_ans_num, query_name, mode, ent2id, rel2id):
     num_sampled, num_try, num_repeat, num_more_answer, num_broken, num_no_extra_answer, num_no_extra_negative, num_empty = 0, 0, 0, 0, 0, 0, 0, 0
@@ -176,15 +184,15 @@ def ground_queries(dataset, query_structure, ent_in, ent_out, small_ent_in, smal
     while num_sampled < gen_num:
         if num_sampled != 0:
             if num_sampled % (gen_num//100) == 0 and num_sampled != old_num_sampled:
-                logging.info('%s %s: [%d/%d], avg time: %s, try: %s, repeat: %s: more_answer: %s, broken: %s, no extra: %s, no negative: %s empty: %s'%(mode, 
-                    query_structure, 
-                    num_sampled, gen_num, (time.time()-s0)/num_sampled, num_try, num_repeat, num_more_answer, 
-                    num_broken, num_no_extra_answer, num_no_extra_negative, num_empty))
+                logging.info(f'{mode} {query_structure}: [{num_sampled}/{gen_num}], avg time: {(time.time()-s0)/num_sampled}, '
+                             f'try: {num_try}, repeat: {num_repeat}: more_answer: {num_more_answer}, broken: {num_broken}, '
+                             f'no extra: {num_no_extra_answer}, no negative: {num_no_extra_negative} empty: {num_empty}')
                 old_num_sampled = num_sampled
-        print ('%s %s: [%d/%d], avg time: %s, try: %s, repeat: %s: more_answer: %s, broken: %s, no extra: %s, no negative: %s empty: %s'%(mode, 
-            query_structure, 
+        print (f'%s %s: [%d/%d], avg time: %s, try: %s, repeat: %s: more_answer: %s, broken: %s, no extra: %s, no negative: %s empty: %s'%(mode,
+            query_structure,
             num_sampled, gen_num, (time.time()-s0)/(num_sampled+0.001), num_try, num_repeat, num_more_answer, 
             num_broken, num_no_extra_answer, num_no_extra_negative, num_empty), end='\r')
+
         num_try += 1
         empty_query_structure = deepcopy(query_structure)
         answer = random.sample(ent_in.keys(), 1)[0]
@@ -236,6 +244,7 @@ def ground_queries(dataset, query_structure, ent_in, ent_out, small_ent_in, smal
     with open('./data/%s/%s-tp-answers.pkl'%(dataset, name_to_save), 'wb') as f:
         pickle.dump(tp_answers, f)
     return queries, tp_answers, fp_answers, fn_answers
+
 
 def generate_queries(dataset, query_structures, gen_num, max_ans_num, gen_train, gen_valid, gen_test, query_names, save_name):
     base_path = './data/%s'%dataset
@@ -289,9 +298,15 @@ def generate_queries(dataset, query_structures, gen_num, max_ans_num, gen_train,
     train_ans_num = []
     s0 = time.time()
     if gen_train:
-        train_queries, train_tp_answers, train_fp_answers, train_fn_answers = ground_queries(dataset, query_structure, 
-            train_ent_in, train_ent_out, defaultdict(lambda: defaultdict(set)), defaultdict(lambda: defaultdict(set)), 
-            gen_num[0], max_ans_num, query_name, 'train', ent2id, rel2id)
+        train_queries, train_tp_answers, train_fp_answers, train_fn_answers = ground_queries(dataset,
+                                                                                             query_structure,
+                                                                                             train_ent_in,
+                                                                                             train_ent_out,
+                                                                                             defaultdict(lambda: defaultdict(set)),
+                                                                                             defaultdict(lambda: defaultdict(set)),
+                                                                                             gen_num[0], max_ans_num,
+                                                                                             query_name, 'train',
+                                                                                             ent2id, rel2id)
     if gen_valid:
         valid_queries, valid_tp_answers, valid_fp_answers, valid_fn_answers = ground_queries(dataset, query_structure, 
             valid_ent_in, valid_ent_out, train_ent_in, train_ent_out, gen_num[1], max_ans_num, query_name, 'valid', ent2id, rel2id)
@@ -299,6 +314,7 @@ def generate_queries(dataset, query_structures, gen_num, max_ans_num, gen_train,
         test_queries, test_tp_answers, test_fp_answers, test_fn_answers = ground_queries(dataset, query_structure, 
             test_ent_in, test_ent_out, valid_ent_in, valid_ent_out, gen_num[2], max_ans_num, query_name, 'test', ent2id, rel2id)
     print ('%s queries generated with structure %s'%(gen_num, query_structure))
+
 
 def fill_query(query_structure, ent_in, ent_out, answer, ent2id, rel2id):
     assert type(query_structure[-1]) == list
@@ -348,6 +364,7 @@ def fill_query(query_structure, ent_in, ent_out, answer, ent2id, rel2id):
                 if len(structure_set) < len(same_structure[structure]):
                     return True
 
+
 def achieve_answer(query, ent_in, ent_out):
     assert type(query[-1]) == list
     all_relation_flag = True
@@ -382,6 +399,7 @@ def achieve_answer(query, ent_in, ent_out):
                 ent_set = ent_set.union(achieve_answer(query[i], ent_in, ent_out))
     return ent_set
 
+
 @click.command()
 @click.option('--dataset', default="FB15k-237")
 @click.option('--seed', default=0)
@@ -396,6 +414,8 @@ def achieve_answer(query, ent_in, ent_out):
 @click.option('--gen_id', default=0)
 @click.option('--save_name', is_flag=True, default=False)
 @click.option('--index_only', is_flag=True, default=False)
+
+
 def main(dataset, seed, gen_train_num, gen_valid_num, gen_test_num, max_ans_num, reindex, gen_train, gen_valid, gen_test, gen_id, save_name, index_only):
     train_num_dict = {'FB15k': 273710, "FB15k-237": 149689, "NELL": 107982}
     valid_num_dict = {'FB15k': 8000, "FB15k-237": 5000, "NELL": 4000}
@@ -456,6 +476,7 @@ def main(dataset, seed, gen_train_num, gen_valid_num, gen_test_num, max_ans_num,
     query_names = ['1p', '2p', '3p', '2i', '3i', 'pi', 'ip', '2in', '3in', 'pin', 'pni', 'inp', '2u', 'up']
 
     generate_queries(dataset, query_structures[gen_id:gen_id+1], [gen_train_num, gen_valid_num, gen_test_num], max_ans_num, gen_train, gen_valid, gen_test, query_names[gen_id:gen_id+1], save_name)
+
 
 if __name__ == '__main__':
     main()
