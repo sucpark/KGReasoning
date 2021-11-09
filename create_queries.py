@@ -191,10 +191,10 @@ def ground_queries(dataset, query_structure, ent_in, ent_out, small_ent_in, smal
                 old_num_sampled = num_sampled
         print(
             f'%s %s: [%d/%d], avg time: %s, try: %s, repeat: %s: more_answer: %s, broken: %s, no extra: %s, no negative: %s empty: %s' % (
-            mode,
-            query_structure,
-            num_sampled, gen_num, (time.time() - s0) / (num_sampled + 0.001), num_try, num_repeat, num_more_answer,
-            num_broken, num_no_extra_answer, num_no_extra_negative, num_empty), end='\r')
+                mode,
+                query_structure,
+                num_sampled, gen_num, (time.time() - s0) / (num_sampled + 0.001), num_try, num_repeat, num_more_answer,
+                num_broken, num_no_extra_answer, num_no_extra_negative, num_empty), end='\r')
 
         num_try += 1
         empty_query_structure = deepcopy(query_structure)
@@ -252,8 +252,8 @@ def ground_queries(dataset, query_structure, ent_in, ent_out, small_ent_in, smal
     return queries, tp_answers, fp_answers, fn_answers
 
 
-def generate_queries(dataset, query_structures, gen_num, max_ans_num, gen_train, gen_valid, gen_test, query_names, save_name):
-
+def generate_queries(dataset, query_structures, gen_num, max_ans_num, gen_train, gen_valid, gen_test, query_names,
+                     save_name):
     base_path = './data/%s' % dataset
     indexified_files = ['train_indexified.txt', 'valid_indexified.txt', 'test_indexified.txt']
     if gen_train or gen_valid:
@@ -351,8 +351,8 @@ def fill_query(query_structure, ent_in, ent_out, answer, ent2id, rel2id):
                 query_structure[-1][i] = -2
                 continue
             found = False
-            for j in range(40):
-                r_tmp = random.sample(ent_in[answer].keys(), 1)[0]
+            for j in range(40):                                     # 뭐야 이거?
+                r_tmp = random.sample(ent_in[answer].keys(), 1)[0]  # answer 에 연결되어 있는 여러개의 relation 중 하나를 고른다.
                 if r_tmp // 2 != r // 2 or r_tmp == r:
                     r = r_tmp
                     found = True
@@ -435,8 +435,8 @@ def achieve_answer(query, ent_in, ent_out):
 @click.option('--gen_id', default=0)
 @click.option('--save_name', is_flag=True, default=False)
 @click.option('--index_only', is_flag=True, default=False)
-def main(dataset, seed, gen_train_num, gen_valid_num, gen_test_num, max_ans_num, reindex, gen_train, gen_valid, gen_test, gen_id, save_name, index_only):
-
+def main(dataset, seed, gen_train_num, gen_valid_num, gen_test_num, max_ans_num, reindex, gen_train, gen_valid,
+         gen_test, gen_id, save_name, index_only):
     train_num_dict = {'FB15k': 273710, "FB15k-237": 149689, "NELL": 107982}
     valid_num_dict = {'FB15k': 8000, "FB15k-237": 5000, "NELL": 4000}
     test_num_dict = {'FB15k': 8000, "FB15k-237": 5000, "NELL": 4000}
