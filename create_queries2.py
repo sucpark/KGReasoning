@@ -120,8 +120,7 @@ def index_dataset(dataset_name, force=False):
 
 
 def construct_graph(base_path, indexified_files):
-    # knowledge graph
-    # kb[e][rel] = set([e, e, e])
+
     ent_in, ent_out = defaultdict(lambda: defaultdict(set)), defaultdict(lambda: defaultdict(set))
     for indexified_p in indexified_files:
         with open(osp.join(base_path, indexified_p)) as f:
@@ -146,19 +145,18 @@ def tuple2list(t):
     return list(tuple2list(x) if type(x) == tuple else x for x in t)
 
 
-def write_links(dataset, ent_out, small_ent_out, max_ans_num, name):
+def write_links(dataset, small_ent_out, ent_out, max_ans_num, name):
     queries = defaultdict(set)
-    tp_answers = defaultdict(set)
     fn_answers = defaultdict(set)
-    fp_answers = defaultdict(set)
-    answers = defaultdict(set)
+    tp_answers = defaultdict(set)
     num_more_answer = 0
+
     for ent in ent_out:
         for rel in ent_out[ent]:
-            if len(ent_out[ent][rel]) <= max_ans_num:
+            if len(ent_out[ent][rel]) <= max_ans_num:       # answer 가 너무 많은건 배제 i.e. isMale, isFemale
                 queries[('e', ('r',))].add((ent, (rel,)))
-                fn_answers[(ent, (rel,))] = ent_out[ent][rel]
-                tp_answers[(ent, (rel,))] = small_ent_out[ent][rel]
+                fn_answers[(ent, (rel,))] = small_ent_out[ent][rel]     # false negative: false negative from small graph
+                tp_answers[(ent, (rel,))] = ent_out[ent][rel]           # true positive: easy answer from large graph
             else:
                 num_more_answer += 1
 
@@ -168,29 +166,26 @@ def write_links(dataset, ent_out, small_ent_out, max_ans_num, name):
         with open('./data/%s/%s-answers.pkl' % (dataset, name), 'wb') as f:
             pickle.dump(fn_answers, f)
     else:
-        # with open('./data/%s/%s-tp-answers.pkl'%(dataset, name), 'wb') as f:
         with open('./data/%s/%s-easy-answers.pkl' % (dataset, name), 'wb') as f:
             pickle.dump(tp_answers, f)
-        # with open('./data/%s/%s-fn-answers.pkl'%(dataset, name), 'wb') as f:
         with open('./data/%s/%s-hard-answers.pkl' % (dataset, name), 'wb') as f:
             pickle.dump(fn_answers, f)
-    # with open('./data/%s/%s-fp-answers.pkl'%(dataset, name), 'wb') as f:
-    # pickle.dump(fp_answers, f)
     print(num_more_answer)
 
 
-def ground_queries(dataset, query_structure, ent_in, ent_out, small_ent_in, small_ent_out, gen_num, max_ans_num,
-                   query_name, mode, ent2id, rel2id, gen_all_queries):
+def ground_queries(dataset, query_structure, ent_backward, ent_forward, small_ent_in, small_ent_out, gen_num, max_ans_num, query_name, mode, ent2id, rel2id, gen_all_queries):
+
     num_sampled, num_try, num_repeat, num_more_answer, num_broken, num_no_extra_answer, num_no_extra_negative, num_empty = 0, 0, 0, 0, 0, 0, 0, 0
     tp_ans_num, fp_ans_num, fn_ans_num = [], [], []
+
     if gen_all_queries:
         with open('./data/%s/%s-queries.pkl' % (dataset, mode), 'rb') as f:
             queries = pickle.load(f)
         fp_answers = defaultdict(set)
         if mode == "train":
             with open('./data/%s/%s-answers.pkl' % (dataset, mode), 'rb') as f:
-                fn_answers = pickle.load(f)
-            tp_answers = defaultdict(set)
+                tp_answers = pickle.load(f)
+            fn_answers = defaultdict(set)
         else:
             with open('./data/%s/%s-hard-answers.pkl' % (dataset, mode), 'rb') as f:
                 fn_answers = pickle.load(f)
@@ -201,8 +196,10 @@ def ground_queries(dataset, query_structure, ent_in, ent_out, small_ent_in, smal
         tp_answers = defaultdict(set)
         fp_answers = defaultdict(set)
         fn_answers = defaultdict(set)
+
     s0 = time.time()
     old_num_sampled = -1
+
     while num_sampled < gen_num:
         if num_sampled != 0:
             if num_sampled % (gen_num // 100) == 0 and num_sampled != old_num_sampled:
@@ -219,15 +216,16 @@ def ground_queries(dataset, query_structure, ent_in, ent_out, small_ent_in, smal
             query_structure,
             num_sampled, gen_num, (time.time() - s0) / (num_sampled + 0.001), num_try, num_repeat, num_more_answer,
             num_broken, num_no_extra_answer, num_no_extra_negative, num_empty), end='\r')
+
         num_try += 1
         empty_query_structure = deepcopy(query_structure)
-        answer = random.sample(ent_in.keys(), 1)[0]
-        broken_flag = fill_query(empty_query_structure, ent_in, ent_out, answer, ent2id, rel2id)
+        answer = random.sample(ent_backward.keys(), 1)[0]
+        broken_flag = fill_query(empty_query_structure, ent_backward, ent_forward, answer, ent2id, rel2id)
         if broken_flag:
             num_broken += 1
             continue
         query = empty_query_structure
-        answer_set = achieve_answer(query, ent_in, ent_out)
+        answer_set = achieve_answer(query, ent_backward, ent_forward)
         small_answer_set = achieve_answer(query, small_ent_in, small_ent_out)
         if len(answer_set) == 0:
             num_empty += 1
@@ -282,49 +280,35 @@ def ground_queries(dataset, query_structure, ent_in, ent_out, small_ent_in, smal
     return queries, tp_answers, fp_answers, fn_answers
 
 
-def generate_queries(dataset, query_structures, gen_num, max_ans_num, gen_train, gen_valid, gen_test, query_names,
-                     save_name, gen_all_queries):
-    base_path = './data/%s' % dataset
+def generate_queries(dataset, query_structures, gen_num, max_ans_num, gen_train, gen_valid, gen_test, query_names, save_name, gen_all_queries):
+
+    base_path = f'./data/{dataset}'
     indexified_files = ['train_indexified.txt', 'valid_indexified.txt', 'test_indexified.txt']
+
     if gen_train or gen_valid:
-        train_ent_in, train_ent_out = construct_graph(base_path, indexified_files[:1])  # ent_in
+        train_ent_in, train_ent_out = construct_graph(base_path, indexified_files[:1])
     if gen_valid or gen_test:
-        valid_ent_in, valid_ent_out = construct_graph(base_path, indexified_files[:2])
-        valid_only_ent_in, valid_only_ent_out = construct_graph(base_path, indexified_files[1:2])
+        valid_ent_in, valid_ent_out = construct_graph(base_path, indexified_files[:2])              # train_graph + valid_graph
+        valid_only_ent_in, valid_only_ent_out = construct_graph(base_path, indexified_files[1:2])   # valid graph 에 있는 triple 만 이용
     if gen_test:
-        test_ent_in, test_ent_out = construct_graph(base_path, indexified_files[:3])
-        test_only_ent_in, test_only_ent_out = construct_graph(base_path, indexified_files[2:3])
+        test_ent_in, test_ent_out = construct_graph(base_path, indexified_files[:3])                # train_graph + valid_graph + test_graph
+        test_only_ent_in, test_only_ent_out = construct_graph(base_path, indexified_files[2:3])     # test graph 에 있는 triple 만 이용
 
     ent2id = pickle.load(open(os.path.join(base_path, "ent2id.pkl"), 'rb'))
     rel2id = pickle.load(open(os.path.join(base_path, "rel2id.pkl"), 'rb'))
 
-    train_queries = defaultdict(set)
-    train_tp_answers = defaultdict(set)
-    train_fp_answers = defaultdict(set)
-    train_fn_answers = defaultdict(set)
-    valid_queries = defaultdict(set)
-    valid_tp_answers = defaultdict(set)
-    valid_fp_answers = defaultdict(set)
-    valid_fn_answers = defaultdict(set)
-    test_queries = defaultdict(set)
-    test_answers = defaultdict(set)
-    test_tp_answers = defaultdict(set)
-    test_fp_answers = defaultdict(set)
-    test_fn_answers = defaultdict(set)
+    assert len(query_structures) == 1, "Input one query type"
 
-    t1, t2, t3, t4, t5, t6 = 0, 0, 0, 0, 0, 0
-    assert len(query_structures) == 1
-    idx = 0
-    query_structure = query_structures[idx]
-    query_name = query_names[idx] if save_name else str(idx)
+    query_structure = query_structures[0]
+    query_name = query_names[0]
     print('general structure is', query_structure, "with name", query_name)
+
     if query_structure == ['e', ['r']]:
         if gen_train:
             if gen_all_queries:
                 write_links(dataset, train_ent_out, defaultdict(lambda: defaultdict(set)), max_ans_num, 'train')
             else:
-                write_links(dataset, train_ent_out, defaultdict(lambda: defaultdict(set)), max_ans_num,
-                            'train-' + query_name)
+                write_links(dataset, train_ent_out, defaultdict(lambda: defaultdict(set)), max_ans_num, 'train-' + query_name)
         if gen_valid:
             if gen_all_queries:
                 write_links(dataset, valid_only_ent_out, train_ent_out, max_ans_num, 'valid')
@@ -337,48 +321,24 @@ def generate_queries(dataset, query_structures, gen_num, max_ans_num, gen_train,
                 write_links(dataset, test_only_ent_out, valid_ent_out, max_ans_num, 'test-' + query_name)
 
         print("link prediction created!")
-        # os._exit(-1)
         return
 
     name_to_save = query_name
     set_logger("./data/{}/".format(dataset), name_to_save)
 
-    num_sampled, num_try, num_repeat, num_more_answer, num_broken, num_empty = 0, 0, 0, 0, 0, 0
-    train_ans_num = []
-    s0 = time.time()
     if gen_train:
-        train_queries, train_tp_answers, train_fp_answers, train_fn_answers = ground_queries(dataset, query_structure,
-                                                                                             train_ent_in,
-                                                                                             train_ent_out,
-                                                                                             defaultdict(lambda: defaultdict(set)),
-                                                                                             defaultdict(lambda: defaultdict(set)),
-                                                                                             gen_num[0], max_ans_num,
-                                                                                             query_name, 'train',
-                                                                                             ent2id, rel2id,
-                                                                                             gen_all_queries)
+        ground_queries(dataset, query_structure, train_ent_in, train_ent_out,
+                       defaultdict(lambda: defaultdict(set)), defaultdict(lambda: defaultdict(set)),
+                       gen_num[0], max_ans_num, query_name, 'train', ent2id, rel2id, gen_all_queries)
     if gen_valid:
-        valid_queries, valid_tp_answers, valid_fp_answers, valid_fn_answers = ground_queries(dataset, query_structure,
-                                                                                             valid_ent_in,
-                                                                                             valid_ent_out,
-                                                                                             train_ent_in,
-                                                                                             train_ent_out,
-                                                                                             gen_num[1],
-                                                                                             max_ans_num, query_name,
-                                                                                             'valid', ent2id, rel2id,
-                                                                                             gen_all_queries)
+        ground_queries(dataset, query_structure, valid_ent_in, valid_ent_out, train_ent_in, train_ent_out,
+                       gen_num[1], max_ans_num, query_name, 'valid', ent2id, rel2id, gen_all_queries)
     if gen_test:
-        test_queries, test_tp_answers, test_fp_answers, test_fn_answers = ground_queries(dataset, query_structure,
-                                                                                         test_ent_in,
-                                                                                         test_ent_out,
-                                                                                         valid_ent_in,
-                                                                                         valid_ent_out,
-                                                                                         gen_num[2], max_ans_num,
-                                                                                         query_name, 'test', ent2id,
-                                                                                         rel2id, gen_all_queries)
-    print('%s queries generated with structure %s' % (gen_num, query_structure))
+        ground_queries(dataset, query_structure, test_ent_in, test_ent_out, valid_ent_in, valid_ent_out,
+                       gen_num[2], max_ans_num, query_name, 'test', ent2id, rel2id, gen_all_queries)
 
 
-def fill_query(query_structure, ent_in, ent_out, answer, ent2id, rel2id):
+def fill_query(query_structure, ent_backward, ent_forward, answer, ent2id, rel2id):
     assert type(query_structure[-1]) == list
     all_relation_flag = True
     for ele in query_structure[-1]:
@@ -393,7 +353,7 @@ def fill_query(query_structure, ent_in, ent_out, answer, ent2id, rel2id):
                 continue
             found = False
             for j in range(40):
-                r_tmp = random.sample(ent_in[answer].keys(), 1)[0]
+                r_tmp = random.sample(ent_backward[answer].keys(), 1)[0]
                 if r_tmp // 2 != r // 2 or r_tmp == r:
                     r = r_tmp
                     found = True
@@ -401,11 +361,11 @@ def fill_query(query_structure, ent_in, ent_out, answer, ent2id, rel2id):
             if not found:
                 return True
             query_structure[-1][i] = r
-            answer = random.sample(ent_in[answer][r], 1)[0]
+            answer = random.sample(ent_backward[answer][r], 1)[0]
         if query_structure[0] == 'e':
             query_structure[0] = answer
         else:
-            return fill_query(query_structure[0], ent_in, ent_out, answer, ent2id, rel2id)
+            return fill_query(query_structure[0], ent_backward, ent_forward, answer, ent2id, rel2id)
     else:
         same_structure = defaultdict(list)
         for i in range(len(query_structure)):
@@ -415,7 +375,7 @@ def fill_query(query_structure, ent_in, ent_out, answer, ent2id, rel2id):
                 assert i == len(query_structure) - 1
                 query_structure[i][0] = -1
                 continue
-            broken_flag = fill_query(query_structure[i], ent_in, ent_out, answer, ent2id, rel2id)
+            broken_flag = fill_query(query_structure[i], ent_backward, ent_forward, answer, ent2id, rel2id)
             if broken_flag:
                 return True
         for structure in same_structure:
@@ -477,53 +437,23 @@ def achieve_answer(query, ent_in, ent_out):
 @click.option('--gen_all_queries', is_flag=True, default=False)
 @click.option('--save_name', is_flag=True, default=False)
 @click.option('--index_only', is_flag=True, default=False)
-def main(dataset, seed, gen_train_num, gen_valid_num, gen_test_num, max_ans_num, reindex, gen_train, gen_valid,
+def main(dataset, gen_train_num, gen_valid_num, gen_test_num, max_ans_num, reindex, gen_train, gen_valid,
          gen_test, gen_id, gen_all_queries, save_name, index_only):
+
     train_num_dict = {'FB15k': 273710, "FB15k-237": 149689, "NELL": 107982, "YAGO3": 1000}
     valid_num_dict = {'FB15k': 8000, "FB15k-237": 5000, "NELL": 4000, "YAGO3": 100}
     test_num_dict = {'FB15k': 8000, "FB15k-237": 5000, "NELL": 4000, "YAGO3": 100}
+
     if gen_train and gen_train_num == 0:
-        if 'FB15k-237' in dataset:
-            # gen_train_num = 149689
-            gen_train_num = train_num_dict[dataset]
-        elif 'FB15k' in dataset:
-            # gen_train_num = 273710
-            gen_train_num = train_num_dict[dataset]
-        elif 'NELL' in dataset:
-            # gen_train_num = 107982
-            gen_train_num = train_num_dict[dataset]
-        else:
-            gen_train_num = train_num_dict[dataset]
-            # gen_train_num = 0
+        gen_train_num = train_num_dict[dataset]
     if gen_valid and gen_valid_num == 0:
-        if 'FB15k-237' in dataset:
-            # gen_valid_num = 5000
-            gen_valid_num = valid_num_dict[dataset]
-        elif 'FB15k' in dataset:
-            # gen_valid_num = 8000
-            gen_valid_num = valid_num_dict[dataset]
-        elif 'NELL' in dataset:
-            # gen_valid_num = 4000
-            gen_valid_num = valid_num_dict[dataset]
-        else:
-            gen_valid_num = valid_num_dict[dataset]
-            # gen_valid_num = 0
+        gen_valid_num = valid_num_dict[dataset]
     if gen_test and gen_test_num == 0:
-        if 'FB15k-237' in dataset:
-            # gen_test_num = 5000
-            gen_test_num = test_num_dict[dataset]
-        elif 'FB15k' in dataset:
-            # gen_test_num = 8000
-            gen_test_num = test_num_dict[dataset]
-        elif 'NELL' in dataset:
-            # gen_test_num = 4000
-            gen_test_num = test_num_dict[dataset]
-        else:
-            gen_test_num = test_num_dict[dataset]
-            # gen_test_num = 0
+        gen_test_num = test_num_dict[dataset]
+
     if index_only:
         index_dataset(dataset, reindex)
-        os._exit(-1)
+        os.exit(-1)
 
     e = 'e'
     r = 'r'
@@ -548,22 +478,6 @@ def main(dataset, seed, gen_train_num, gen_valid_num, gen_test_num, max_ans_num,
         [[[e, [r]], [e, [r]], [u]], [r]]
     ]
     query_names = ['1p', '2p', '3p', '2i', '3i', 'pi', 'ip', '2in', '3in', 'pin', 'pni', 'inp', '2u', 'up']
-
-    # # FB15k-BetaE papers
-    # query_structures = [
-    #                     [e, [r]],
-    #                     [e, [r, r]],
-    #                     [e, [r, r, r]],
-    #                     [[e, [r]], [e, [r]]],
-    #                     [[e, [r]], [e, [r]], [e, [r]]],
-    #                     # negation
-    #                     [[e, [r]], [e, [r, n]]],
-    #                     [[e, [r]], [e, [r]], [e, [r, n]]],
-    #                     [[[e, [r]], [e, [r, n]]], [r]],
-    #                     [[e, [r, r]], [e, [r, n]]],
-    #                     [[e, [r, r, n]], [e, [r]]],
-    #                    ]
-    # query_names = ['1p', '2p', '3p', '2i', '3i', '2in', '3in', 'inp', 'pin', 'pni']
 
     if gen_all_queries:
         print("1p")
