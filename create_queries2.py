@@ -173,7 +173,7 @@ def write_links(dataset, small_ent_out, ent_out, max_ans_num, name):
     print(num_more_answer)
 
 
-def ground_queries(dataset, query_structure, ent_backward, ent_forward, small_ent_in, small_ent_out, gen_num, max_ans_num, query_name, mode, ent2id, rel2id, gen_all_queries):
+def ground_queries(dataset, query_structure, ent_backward, ent_forward, small_ent_backward, small_ent_forward, gen_num, max_ans_num, query_name, mode, ent2id, rel2id, gen_all_queries):
 
     num_sampled, num_try, num_repeat, num_more_answer, num_broken, num_no_extra_answer, num_no_extra_negative, num_empty = 0, 0, 0, 0, 0, 0, 0, 0
     tp_ans_num, fp_ans_num, fn_ans_num = [], [], []
@@ -226,7 +226,7 @@ def ground_queries(dataset, query_structure, ent_backward, ent_forward, small_en
             continue
         query = empty_query_structure
         answer_set = achieve_answer(query, ent_backward, ent_forward)
-        small_answer_set = achieve_answer(query, small_ent_in, small_ent_out)
+        small_answer_set = achieve_answer(query, small_ent_backward, small_ent_forward)
         if len(answer_set) == 0:
             num_empty += 1
             continue
@@ -245,6 +245,7 @@ def ground_queries(dataset, query_structure, ent_backward, ent_forward, small_en
             num_repeat += 1
             continue
         queries[list2tuple(query_structure)].add(list2tuple(query))
+
         tp_answers[list2tuple(query)] = small_answer_set
         fp_answers[list2tuple(query)] = small_answer_set - answer_set
         fn_answers[list2tuple(query)] = answer_set - small_answer_set
@@ -286,13 +287,13 @@ def generate_queries(dataset, query_structures, gen_num, max_ans_num, gen_train,
     indexified_files = ['train_indexified.txt', 'valid_indexified.txt', 'test_indexified.txt']
 
     if gen_train or gen_valid:
-        train_ent_in, train_ent_out = construct_graph(base_path, indexified_files[:1])
+        train_ent_backward, train_ent_forward = construct_graph(base_path, indexified_files[:1])
     if gen_valid or gen_test:
-        valid_ent_in, valid_ent_out = construct_graph(base_path, indexified_files[:2])              # train_graph + valid_graph
-        valid_only_ent_in, valid_only_ent_out = construct_graph(base_path, indexified_files[1:2])   # valid graph 에 있는 triple 만 이용
+        valid_ent_backward, valid_ent_forward = construct_graph(base_path, indexified_files[:2])              # train_graph + valid_graph
+        valid_only_ent_backward, valid_only_ent_forward = construct_graph(base_path, indexified_files[1:2])   # valid graph 에 있는 triple 만 이용
     if gen_test:
-        test_ent_in, test_ent_out = construct_graph(base_path, indexified_files[:3])                # train_graph + valid_graph + test_graph
-        test_only_ent_in, test_only_ent_out = construct_graph(base_path, indexified_files[2:3])     # test graph 에 있는 triple 만 이용
+        test_ent_backward, test_ent_forward = construct_graph(base_path, indexified_files[:3])                # train_graph + valid_graph + test_graph
+        test_only_ent_backward, test_only_ent_forward = construct_graph(base_path, indexified_files[2:3])     # test graph 에 있는 triple 만 이용
 
     ent2id = pickle.load(open(os.path.join(base_path, "ent2id.pkl"), 'rb'))
     rel2id = pickle.load(open(os.path.join(base_path, "rel2id.pkl"), 'rb'))
@@ -306,19 +307,19 @@ def generate_queries(dataset, query_structures, gen_num, max_ans_num, gen_train,
     if query_structure == ['e', ['r']]:
         if gen_train:
             if gen_all_queries:
-                write_links(dataset, train_ent_out, defaultdict(lambda: defaultdict(set)), max_ans_num, 'train')
+                write_links(dataset, train_ent_forward, defaultdict(lambda: defaultdict(set)), max_ans_num, 'train')
             else:
-                write_links(dataset, train_ent_out, defaultdict(lambda: defaultdict(set)), max_ans_num, 'train-' + query_name)
+                write_links(dataset, train_ent_forward, defaultdict(lambda: defaultdict(set)), max_ans_num, 'train-' + query_name)
         if gen_valid:
             if gen_all_queries:
-                write_links(dataset, valid_only_ent_out, train_ent_out, max_ans_num, 'valid')
+                write_links(dataset, valid_only_ent_forward, train_ent_forward, max_ans_num, 'valid')
             else:
-                write_links(dataset, valid_only_ent_out, train_ent_out, max_ans_num, 'valid-' + query_name)
+                write_links(dataset, valid_only_ent_forward, train_ent_forward, max_ans_num, 'valid-' + query_name)
         if gen_test:
             if gen_all_queries:
-                write_links(dataset, test_only_ent_out, valid_ent_out, max_ans_num, 'test')
+                write_links(dataset, test_only_ent_forward, valid_ent_forward, max_ans_num, 'test')
             else:
-                write_links(dataset, test_only_ent_out, valid_ent_out, max_ans_num, 'test-' + query_name)
+                write_links(dataset, test_only_ent_forward, valid_ent_forward, max_ans_num, 'test-' + query_name)
 
         print("link prediction created!")
         return
@@ -327,14 +328,14 @@ def generate_queries(dataset, query_structures, gen_num, max_ans_num, gen_train,
     set_logger("./data/{}/".format(dataset), name_to_save)
 
     if gen_train:
-        ground_queries(dataset, query_structure, train_ent_in, train_ent_out,
+        ground_queries(dataset, query_structure, train_ent_backward, train_ent_forward,
                        defaultdict(lambda: defaultdict(set)), defaultdict(lambda: defaultdict(set)),
                        gen_num[0], max_ans_num, query_name, 'train', ent2id, rel2id, gen_all_queries)
     if gen_valid:
-        ground_queries(dataset, query_structure, valid_ent_in, valid_ent_out, train_ent_in, train_ent_out,
+        ground_queries(dataset, query_structure, valid_ent_backward, valid_ent_forward, train_ent_backward, train_ent_forward,
                        gen_num[1], max_ans_num, query_name, 'valid', ent2id, rel2id, gen_all_queries)
     if gen_test:
-        ground_queries(dataset, query_structure, test_ent_in, test_ent_out, valid_ent_in, valid_ent_out,
+        ground_queries(dataset, query_structure, test_ent_backward, test_ent_forward, valid_ent_backward, valid_ent_forward,
                        gen_num[2], max_ans_num, query_name, 'test', ent2id, rel2id, gen_all_queries)
 
 
@@ -378,13 +379,13 @@ def fill_query(query_structure, ent_backward, ent_forward, answer, ent2id, rel2i
             broken_flag = fill_query(query_structure[i], ent_backward, ent_forward, answer, ent2id, rel2id)
             if broken_flag:
                 return True
-        for structure in same_structure:
-            if len(same_structure[structure]) != 1:
-                structure_set = set()
-                for i in same_structure[structure]:
-                    structure_set.add(list2tuple(query_structure[i]))
-                if len(structure_set) < len(same_structure[structure]):
-                    return True
+        # for structure in same_structure:
+        #     if len(same_structure[structure]) != 1:
+        #         structure_set = set()
+        #         for i in same_structure[structure]:
+        #             structure_set.add(list2tuple(query_structure[i]))
+        #         if len(structure_set) < len(same_structure[structure]):
+        #             return True
 
 
 def achieve_answer(query, ent_in, ent_out):

@@ -378,7 +378,7 @@ def fill_query(query_structure, ent_in, ent_out, answer, ent2id, rel2id):
             if broken_flag:
                 return True
         for structure in same_structure:
-            if len(same_structure[structure]) != 1:
+            if len(same_structure[structure]) != 1:      # 중복된 형태의 query structure i.e. (e,r) (e,r)
                 structure_set = set()
                 for i in same_structure[structure]:
                     structure_set.add(list2tuple(query_structure[i]))
