@@ -20,11 +20,13 @@ import time
 from tqdm import tqdm
 import os
 
+
 def Identity(x):
     return x
 
+
 class BoxOffsetIntersection(nn.Module):
-    
+
     def __init__(self, dim):
         super(BoxOffsetIntersection, self).__init__()
         self.dim = dim
@@ -36,11 +38,12 @@ class BoxOffsetIntersection(nn.Module):
 
     def forward(self, embeddings):
         layer1_act = F.relu(self.layer1(embeddings))
-        layer1_mean = torch.mean(layer1_act, dim=0) 
+        layer1_mean = torch.mean(layer1_act, dim=0)
         gate = torch.sigmoid(self.layer2(layer1_mean))
         offset, _ = torch.min(embeddings, dim=0)
 
         return offset * gate
+
 
 class CenterIntersection(nn.Module):
 
@@ -59,6 +62,7 @@ class CenterIntersection(nn.Module):
         embedding = torch.sum(attention * embeddings, dim=0)
 
         return embedding
+
 
 class BetaIntersection(nn.Module):
 
@@ -80,6 +84,7 @@ class BetaIntersection(nn.Module):
         beta_embedding = torch.sum(attention * beta_embeddings, dim=0)
 
         return alpha_embedding, beta_embedding
+
 
 class BetaProjection(nn.Module):
     def __init__(self, entity_dim, relation_dim, hidden_dim, projection_regularizer, num_layers):
@@ -105,7 +110,8 @@ class BetaProjection(nn.Module):
 
         return x
 
-class Regularizer():
+
+class Regularizer:
     def __init__(self, base_add, min_val, max_val):
         self.base_add = base_add
         self.min_val = min_val
@@ -114,8 +120,9 @@ class Regularizer():
     def __call__(self, entity_embedding):
         return torch.clamp(entity_embedding + self.base_add, self.min_val, self.max_val)
 
+
 class KGReasoning(nn.Module):
-    def __init__(self, nentity, nrelation, hidden_dim, gamma, 
+    def __init__(self, nentity, nrelation, hidden_dim, gamma,
                  geo, test_batch_size=1,
                  box_mode=None, use_cuda=False,
                  query_name_dict=None, beta_mode=None):
@@ -130,22 +137,22 @@ class KGReasoning(nn.Module):
         self.query_name_dict = query_name_dict
 
         self.gamma = nn.Parameter(
-            torch.Tensor([gamma]), 
+            torch.Tensor([gamma]),
             requires_grad=False
         )
 
         self.embedding_range = nn.Parameter(
-            torch.Tensor([(self.gamma.item() + self.epsilon) / hidden_dim]), 
+            torch.Tensor([(self.gamma.item() + self.epsilon) / hidden_dim]),
             requires_grad=False
         )
-        
+
         self.entity_dim = hidden_dim
         self.relation_dim = hidden_dim
-        
+
         if self.geo == 'box':
-            self.entity_embedding = nn.Parameter(torch.zeros(nentity, self.entity_dim)) # centor for entities
+            self.entity_embedding = nn.Parameter(torch.zeros(nentity, self.entity_dim))     # centor for entities
             activation, cen = box_mode
-            self.cen = cen # hyperparameter that balances the in-box distance and the out-box distance
+            self.cen = cen      # hyperparameter that balances the in-box distance and the out-box distance
             if activation == 'none':
                 self.func = Identity
             elif activation == 'relu':
@@ -153,29 +160,30 @@ class KGReasoning(nn.Module):
             elif activation == 'softplus':
                 self.func = F.softplus
         elif self.geo == 'vec':
-            self.entity_embedding = nn.Parameter(torch.zeros(nentity, self.entity_dim)) # center for entities
+            self.entity_embedding = nn.Parameter(torch.zeros(nentity, self.entity_dim))     # center for entities
         elif self.geo == 'beta':
-            self.entity_embedding = nn.Parameter(torch.zeros(nentity, self.entity_dim * 2)) # alpha and beta
-            self.entity_regularizer = Regularizer(1, 0.05, 1e9) # make sure the parameters of beta embeddings are positive
-            self.projection_regularizer = Regularizer(1, 0.05, 1e9) # make sure the parameters of beta embeddings after relation projection are positive
+            self.entity_embedding = nn.Parameter(torch.zeros(nentity, self.entity_dim * 2))     # alpha and beta
+            self.entity_regularizer = Regularizer(1, 0.05, 1e9)     # make sure the parameters of beta embeddings are positive
+            self.projection_regularizer = Regularizer(1, 0.05, 1e9)     # make sure the parameters of beta embeddings after relation projection are positive
+
         nn.init.uniform_(
-            tensor=self.entity_embedding, 
-            a=-self.embedding_range.item(), 
+            tensor=self.entity_embedding,
+            a=-self.embedding_range.item(),
             b=self.embedding_range.item()
         )
 
         self.relation_embedding = nn.Parameter(torch.zeros(nrelation, self.relation_dim))
         nn.init.uniform_(
-            tensor=self.relation_embedding, 
-            a=-self.embedding_range.item(), 
+            tensor=self.relation_embedding,
+            a=-self.embedding_range.item(),
             b=self.embedding_range.item()
         )
 
         if self.geo == 'box':
             self.offset_embedding = nn.Parameter(torch.zeros(nrelation, self.entity_dim))
             nn.init.uniform_(
-                tensor=self.offset_embedding, 
-                a=0., 
+                tensor=self.offset_embedding,
+                a=0.,
                 b=self.embedding_range.item()
             )
             self.center_net = CenterIntersection(self.entity_dim)
@@ -185,11 +193,8 @@ class KGReasoning(nn.Module):
         elif self.geo == 'beta':
             hidden_dim, num_layers = beta_mode
             self.center_net = BetaIntersection(self.entity_dim)
-            self.projection_net = BetaProjection(self.entity_dim * 2, 
-                                             self.relation_dim, 
-                                             hidden_dim, 
-                                             self.projection_regularizer, 
-                                             num_layers)
+            self.projection_net = BetaProjection(self.entity_dim * 2,  self.relation_dim, hidden_dim,
+                                                 self.projection_regularizer, num_layers)
 
     def forward(self, positive_sample, negative_sample, subsampling_weight, batch_queries_dict, batch_idxs_dict):
         if self.geo == 'box':
@@ -200,12 +205,12 @@ class KGReasoning(nn.Module):
             return self.forward_beta(positive_sample, negative_sample, subsampling_weight, batch_queries_dict, batch_idxs_dict)
 
     def embed_query_box(self, queries, query_structure, idx):
-        '''
+        """
         Iterative embed a batch of queries with same structure using Query2box
         queries: a flattened batch of queries
-        '''
+        """
         all_relation_flag = True
-        for ele in query_structure[-1]: # whether the current query tree has merged to one branch and only need to do relation traversal, e.g., path queries or conjunctive queries after the intersection
+        for ele in query_structure[-1]:     # whether the current query tree has merged to one branch and only need to do relation traversal, e.g., path queries or conjunctive queries after the intersection
             if ele not in ['r', 'n']:
                 all_relation_flag = False
                 break
@@ -241,12 +246,12 @@ class KGReasoning(nn.Module):
         return embedding, offset_embedding, idx
 
     def embed_query_vec(self, queries, query_structure, idx):
-        '''
+        """
         Iterative embed a batch of queries with same structure using GQE
         queries: a flattened batch of queries
-        '''
+        """
         all_relation_flag = True
-        for ele in query_structure[-1]: # whether the current query tree has merged to one branch and only need to do relation traversal, e.g., path queries or conjunctive queries after the intersection
+        for ele in query_structure[-1]:     # whether the current query tree has merged to one branch and only need to do relation traversal, e.g., path queries or conjunctive queries after the intersection
             if ele not in ['r', 'n']:
                 all_relation_flag = False
                 break
@@ -273,10 +278,10 @@ class KGReasoning(nn.Module):
         return embedding, idx
 
     def embed_query_beta(self, queries, query_structure, idx):
-        '''
+        """
         Iterative embed a batch of queries with same structure using BetaE
         queries: a flattened batch of queries
-        '''
+        """
         all_relation_flag = True
         for ele in query_structure[-1]: # whether the current query tree has merged to one branch and only need to do relation traversal, e.g., path queries or conjunctive queries after the intersection
             if ele not in ['r', 'n']:
@@ -321,16 +326,16 @@ class KGReasoning(nn.Module):
         for query_structure in batch_queries_dict:
             if 'u' in self.query_name_dict[query_structure] and 'DNF' in self.query_name_dict[query_structure]:
                 alpha_embedding, beta_embedding, _ = \
-                    self.embed_query_beta(self.transform_union_query(batch_queries_dict[query_structure], 
-                                                                     query_structure), 
-                                          self.transform_union_structure(query_structure), 
+                    self.embed_query_beta(self.transform_union_query(batch_queries_dict[query_structure],
+                                                                     query_structure),
+                                          self.transform_union_structure(query_structure),
                                           0)
                 all_union_idxs.extend(batch_idxs_dict[query_structure])
                 all_union_alpha_embeddings.append(alpha_embedding)
                 all_union_beta_embeddings.append(beta_embedding)
             else:
-                alpha_embedding, beta_embedding, _ = self.embed_query_beta(batch_queries_dict[query_structure], 
-                                                                           query_structure, 
+                alpha_embedding, beta_embedding, _ = self.embed_query_beta(batch_queries_dict[query_structure],
+                                                                           query_structure,
                                                                            0)
                 all_idxs.extend(batch_idxs_dict[query_structure])
                 all_alpha_embeddings.append(alpha_embedding)
@@ -347,19 +352,22 @@ class KGReasoning(nn.Module):
             all_union_beta_embeddings = all_union_beta_embeddings.view(all_union_beta_embeddings.shape[0]//2, 2, 1, -1)
             all_union_dists = torch.distributions.beta.Beta(all_union_alpha_embeddings, all_union_beta_embeddings)
 
-        if type(subsampling_weight) != type(None):
+        # if type(subsampling_weight) != type(None):
+        # if isinstance(subsampling_weight, type(None)):
+        if subsampling_weight is not None:
             subsampling_weight = subsampling_weight[all_idxs+all_union_idxs]
 
-        if type(positive_sample) != type(None):
+        # if type(positive_sample) != type(None):
+        if isinstance(subsampling_weight, type(None)):
             if len(all_alpha_embeddings) > 0:
-                positive_sample_regular = positive_sample[all_idxs] # positive samples for non-union queries in this batch
+                positive_sample_regular = positive_sample[all_idxs]     # positive samples for non-union queries in this batch
                 positive_embedding = self.entity_regularizer(torch.index_select(self.entity_embedding, dim=0, index=positive_sample_regular).unsqueeze(1))
                 positive_logit = self.cal_logit_beta(positive_embedding, all_dists)
             else:
                 positive_logit = torch.Tensor([]).to(self.entity_embedding.device)
 
             if len(all_union_alpha_embeddings) > 0:
-                positive_sample_union = positive_sample[all_union_idxs] # positive samples for union queries in this batch
+                positive_sample_union = positive_sample[all_union_idxs]     # positive samples for union queries in this batch
                 positive_embedding = self.entity_regularizer(torch.index_select(self.entity_embedding, dim=0, index=positive_sample_union).unsqueeze(1).unsqueeze(1))
                 positive_union_logit = self.cal_logit_beta(positive_embedding, all_union_dists)
                 positive_union_logit = torch.max(positive_union_logit, dim=1)[0]
@@ -369,7 +377,8 @@ class KGReasoning(nn.Module):
         else:
             positive_logit = None
 
-        if type(negative_sample) != type(None):
+        # if type(negative_sample) != type(None):
+        if negative_sample is not None:
             if len(all_alpha_embeddings) > 0:
                 negative_sample_regular = negative_sample[all_idxs]
                 batch_size, negative_size = negative_sample_regular.shape
@@ -393,12 +402,12 @@ class KGReasoning(nn.Module):
         return positive_logit, negative_logit, subsampling_weight, all_idxs+all_union_idxs
 
     def transform_union_query(self, queries, query_structure):
-        '''
+        """
         transform 2u queries to two 1p queries
         transform up queries to two 2p queries
-        '''
+        """
         if self.query_name_dict[query_structure] == '2u-DNF':
-            queries = queries[:, :-1] # remove union -1
+            queries = queries[:, :-1]   # remove union -1
         elif self.query_name_dict[query_structure] == 'up-DNF':
             queries = torch.cat([torch.cat([queries[:, :2], queries[:, 5:6]], dim=1), torch.cat([queries[:, 2:4], queries[:, 5:6]], dim=1)], dim=1)
         queries = torch.reshape(queries, [queries.shape[0]*2, -1])
@@ -406,9 +415,9 @@ class KGReasoning(nn.Module):
 
     def transform_union_structure(self, query_structure):
         if self.query_name_dict[query_structure] == '2u-DNF':
-            return ('e', ('r',))
+            return 'e', ('r',)
         elif self.query_name_dict[query_structure] == 'up-DNF':
-            return ('e', ('r', 'r'))
+            return 'e', ('r', 'r')
 
     def cal_logit_box(self, entity_embedding, query_center_embedding, query_offset_embedding):
         delta = (entity_embedding - query_center_embedding).abs()
@@ -423,16 +432,16 @@ class KGReasoning(nn.Module):
         for query_structure in batch_queries_dict:
             if 'u' in self.query_name_dict[query_structure]:
                 center_embedding, offset_embedding, _ = \
-                    self.embed_query_box(self.transform_union_query(batch_queries_dict[query_structure], 
-                                                                    query_structure), 
-                                         self.transform_union_structure(query_structure), 
+                    self.embed_query_box(self.transform_union_query(batch_queries_dict[query_structure],
+                                                                    query_structure),
+                                         self.transform_union_structure(query_structure),
                                          0)
                 all_union_center_embeddings.append(center_embedding)
                 all_union_offset_embeddings.append(offset_embedding)
                 all_union_idxs.extend(batch_idxs_dict[query_structure])
             else:
-                center_embedding, offset_embedding, _ = self.embed_query_box(batch_queries_dict[query_structure], 
-                                                                             query_structure, 
+                center_embedding, offset_embedding, _ = self.embed_query_box(batch_queries_dict[query_structure],
+                                                                             query_structure,
                                                                              0)
                 all_center_embeddings.append(center_embedding)
                 all_offset_embeddings.append(offset_embedding)
@@ -447,10 +456,12 @@ class KGReasoning(nn.Module):
             all_union_center_embeddings = all_union_center_embeddings.view(all_union_center_embeddings.shape[0]//2, 2, 1, -1)
             all_union_offset_embeddings = all_union_offset_embeddings.view(all_union_offset_embeddings.shape[0]//2, 2, 1, -1)
 
-        if type(subsampling_weight) != type(None):
+        # if type(subsampling_weight) != type(None):
+        if subsampling_weight is not None:
             subsampling_weight = subsampling_weight[all_idxs+all_union_idxs]
 
-        if type(positive_sample) != type(None):
+        # if type(positive_sample) != type(None):
+        if positive_sample is not None:
             if len(all_center_embeddings) > 0:
                 positive_sample_regular = positive_sample[all_idxs]
                 positive_embedding = torch.index_select(self.entity_embedding, dim=0, index=positive_sample_regular).unsqueeze(1)
@@ -469,7 +480,8 @@ class KGReasoning(nn.Module):
         else:
             positive_logit = None
 
-        if type(negative_sample) != type(None):
+        # if type(negative_sample) != type(None):
+        if negative_sample is not None:
             if len(all_center_embeddings) > 0:
                 negative_sample_regular = negative_sample[all_idxs]
                 batch_size, negative_size = negative_sample_regular.shape
@@ -491,7 +503,7 @@ class KGReasoning(nn.Module):
             negative_logit = None
 
         return positive_logit, negative_logit, subsampling_weight, all_idxs+all_union_idxs
-    
+
     def cal_logit_vec(self, entity_embedding, query_embedding):
         distance = entity_embedding - query_embedding
         logit = self.gamma - torch.norm(distance, p=1, dim=-1)
@@ -502,9 +514,8 @@ class KGReasoning(nn.Module):
         all_union_center_embeddings, all_union_idxs = [], []
         for query_structure in batch_queries_dict:
             if 'u' in self.query_name_dict[query_structure]:
-                center_embedding, _ = self.embed_query_vec(self.transform_union_query(batch_queries_dict[query_structure], 
-                                                                    query_structure), 
-                                                                self.transform_union_structure(query_structure), 0)
+                center_embedding, _ = self.embed_query_vec(self.transform_union_query(batch_queries_dict[query_structure], query_structure),
+                                                           self.transform_union_structure(query_structure), 0)
                 all_union_center_embeddings.append(center_embedding)
                 all_union_idxs.extend(batch_idxs_dict[query_structure])
             else:
@@ -518,10 +529,12 @@ class KGReasoning(nn.Module):
             all_union_center_embeddings = torch.cat(all_union_center_embeddings, dim=0).unsqueeze(1)
             all_union_center_embeddings = all_union_center_embeddings.view(all_union_center_embeddings.shape[0]//2, 2, 1, -1)
 
-        if type(subsampling_weight) != type(None):
+        # if type(subsampling_weight) != type(None):
+        if subsampling_weight is not None:
             subsampling_weight = subsampling_weight[all_idxs+all_union_idxs]
 
-        if type(positive_sample) != type(None):
+        # if type(positive_sample) != type(None):
+        if positive_sample is not None:
             if len(all_center_embeddings) > 0:
                 positive_sample_regular = positive_sample[all_idxs]
                 positive_embedding = torch.index_select(self.entity_embedding, dim=0, index=positive_sample_regular).unsqueeze(1)
@@ -540,7 +553,8 @@ class KGReasoning(nn.Module):
         else:
             positive_logit = None
 
-        if type(negative_sample) != type(None):
+        # if type(negative_sample) != type(None):
+        if negative_sample is not None:
             if len(all_center_embeddings) > 0:
                 negative_sample_regular = negative_sample[all_idxs]
                 batch_size, negative_size = negative_sample_regular.shape
@@ -571,7 +585,7 @@ class KGReasoning(nn.Module):
         positive_sample, negative_sample, subsampling_weight, batch_queries, query_structures = next(train_iterator)
         batch_queries_dict = collections.defaultdict(list)
         batch_idxs_dict = collections.defaultdict(list)
-        for i, query in enumerate(batch_queries): # group queries with same structure
+        for i, query in enumerate(batch_queries):   # group queries with same structure
             batch_queries_dict[query_structures[i]].append(query)
             batch_idxs_dict[query_structures[i]].append(i)
         for query_structure in batch_queries_dict:
@@ -631,21 +645,21 @@ class KGReasoning(nn.Module):
                 query_structures = [query_structures[i] for i in idxs]
                 argsort = torch.argsort(negative_logit, dim=1, descending=True)
                 ranking = argsort.clone().to(torch.float)
-                if len(argsort) == args.test_batch_size: # if it is the same shape with test_batch_size, we can reuse batch_entity_range without creating a new one
-                    ranking = ranking.scatter_(1, argsort, model.batch_entity_range) # achieve the ranking of all entities
-                else: # otherwise, create a new torch Tensor for batch_entity_range
+                if len(argsort) == args.test_batch_size:    # if it is the same shape with test_batch_size, we can reuse batch_entity_range without creating a new one
+                    ranking = ranking.scatter_(1, argsort, model.batch_entity_range)    # achieve the ranking of all entities
+                else:   # otherwise, create a new torch Tensor for batch_entity_range
                     if args.cuda:
-                        ranking = ranking.scatter_(1, 
-                                                   argsort, 
-                                                   torch.arange(model.nentity).to(torch.float).repeat(argsort.shape[0], 
+                        ranking = ranking.scatter_(1,
+                                                   argsort,
+                                                   torch.arange(model.nentity).to(torch.float).repeat(argsort.shape[0],
                                                                                                       1).cuda()
-                                                   ) # achieve the ranking of all entities
+                                                   )    # achieve the ranking of all entities
                     else:
-                        ranking = ranking.scatter_(1, 
-                                                   argsort, 
-                                                   torch.arange(model.nentity).to(torch.float).repeat(argsort.shape[0], 
+                        ranking = ranking.scatter_(1,
+                                                   argsort,
+                                                   torch.arange(model.nentity).to(torch.float).repeat(argsort.shape[0],
                                                                                                       1)
-                                                   ) # achieve the ranking of all entities
+                                                   )    # achieve the ranking of all entities
                 for idx, (i, query, query_structure) in enumerate(zip(argsort[:, 0], queries_unflatten, query_structures)):
                     hard_answer = hard_answers[query]
                     easy_answer = easy_answers[query]
@@ -659,8 +673,8 @@ class KGReasoning(nn.Module):
                         answer_list = torch.arange(num_hard + num_easy).to(torch.float).cuda()
                     else:
                         answer_list = torch.arange(num_hard + num_easy).to(torch.float)
-                    cur_ranking = cur_ranking - answer_list + 1 # filtered setting
-                    cur_ranking = cur_ranking[masks] # only take indices that belong to the hard answers
+                    cur_ranking = cur_ranking - answer_list + 1     # filtered setting
+                    cur_ranking = cur_ranking[masks]                # only take indices that belong to the hard answers
 
                     mrr = torch.mean(1./cur_ranking).item()
                     h1 = torch.mean((cur_ranking <= 1).to(torch.float)).item()

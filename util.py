@@ -3,23 +3,29 @@ import random
 import torch
 import time
 
+
 def list2tuple(l):
-    return tuple(list2tuple(x) if type(x)==list else x for x in l)
+    return tuple(list2tuple(x) if type(x) == list else x for x in l)
+
 
 def tuple2list(t):
-    return list(tuple2list(x) if type(x)==tuple else x for x in t)
+    return list(tuple2list(x) if type(x) == tuple else x for x in t)
 
-flatten=lambda l: sum(map(flatten, l),[]) if isinstance(l,tuple) else [l]
+
+flatten = lambda l: sum(map(flatten, l), []) if isinstance(l, tuple) else [l]
+
 
 def parse_time():
     return time.strftime("%Y.%m.%d-%H:%M:%S", time.localtime())
+
 
 def set_global_seed(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
-    torch.backends.cudnn.deterministic=True
+    torch.backends.cudnn.deterministic = True
+
 
 def eval_tuple(arg_return):
     """Evaluate a tuple string into a tuple."""
@@ -29,7 +35,7 @@ def eval_tuple(arg_return):
         arg_return = eval(arg_return)
     else:
         splitted = arg_return[1:-1].split(",")
-        List = []
+        temp_list = []
         for item in splitted:
             try:
                 item = eval(item)
@@ -37,9 +43,10 @@ def eval_tuple(arg_return):
                 pass
             if item == "":
                 continue
-            List.append(item)
-        arg_return = tuple(List)
+            temp_list.append(item)
+        arg_return = tuple(temp_list)
     return arg_return
+
 
 def flatten_query(queries):
     all_queries = []

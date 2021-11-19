@@ -117,9 +117,9 @@ def save_model(model, optimizer, save_variable_list, args):
 
 
 def set_logger(args):
-    '''
+    """
     Write logs to console and log file
-    '''
+    """
     if args.do_train:
         log_file = os.path.join(args.save_path, 'train.log')
     else:
@@ -141,17 +141,17 @@ def set_logger(args):
 
 
 def log_metrics(mode, step, metrics):
-    '''
+    """
     Print the evaluation logs
-    '''
+    """
     for metric in metrics:
         logging.info('%s %s at step %d: %f' % (mode, metric, step, metrics[metric]))
 
 
 def evaluate(model, tp_answers, fn_answers, args, dataloader, query_name_dict, mode, step, writer):
-    '''
+    """
     Evaluate queries in dataloader
-    '''
+    """
     average_metrics = defaultdict(float)
     all_metrics = defaultdict(float)
 
@@ -179,9 +179,9 @@ def evaluate(model, tp_answers, fn_answers, args, dataloader, query_name_dict, m
 
 
 def load_data(args, tasks):
-    '''
+    """
     Load queries and remove queries not in tasks
-    '''
+    """
     logging.info("loading data")
     train_queries = pickle.load(open(os.path.join(args.data_path, "train-queries.pkl"), 'rb'))
     train_answers = pickle.load(open(os.path.join(args.data_path, "train-answers.pkl"), 'rb'))
@@ -359,8 +359,7 @@ def main(args):
     if args.do_train:
         current_learning_rate = args.learning_rate
         optimizer = torch.optim.Adam(
-            filter(lambda p: p.requires_grad, model.parameters()),
-            lr=current_learning_rate
+            filter(lambda p: p.requires_grad, model.parameters()), lr=current_learning_rate
         )
         warm_up_steps = args.max_steps // 2
 
